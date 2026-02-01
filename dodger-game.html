@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Dodger Game</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --w: 480px;
+      --h: 720px;
+      --player-size: 40px;
+      --enemy-size: 36px;
+      --bg: #0f1226;
+      --panel: #1b1f3b;
+      --accent: #4ade80;
+      --danger: #ef4444;
+      --text: #e5e7eb;
+    }
+    * { box-sizing: border-box; font-family: system-ui, Segoe UI, Roboto, Arial, sans-serif; }
+    body {
+      margin: 0; display: grid; place-items: center; min-height: 100vh;
+      background: radial-gradient(1200px 600px at 50% 20%, #1a1f3f 0%, #0b0e1d 60%, #060714 100%);
+      color: var(--text);
+    }
+    .wrap { display: flex; gap: 16px; align-items: flex-start; }
+    #game {
+      position: relative; width: var(--w); height: var(--h); background: var(--bg);
+      border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.5), inset 0 0 40px #0a0c1f;
+      overflow: hidden;
+    }
+    .star {
+      position: absolute; width: 2px; height: 2px; background: #8ab4ff; opacity: 0.7;
+      animation: twinkle 3s infinite ease-in-out;
+    }
+    @keyframes twinkle { 0%,100% { opacity: 0.2 } 50% { opacity: 0.9 } }
+
+    .player {
+      position: absolute; bottom: 20px; left: calc(50% - var(--player-size)/2);
+      width: var(--player-size); height: var(--player-size);
+      background: linear-gradient(135deg, #60a5fa, #2563eb);
+      border-radius: 8px; box-shadow: 0 10px 20px rgba(37,99,235,0.4);
+    }
+    .enemy {
+      position: absolute; top: -40px; width: var(--enemy-size); height: var(--enemy-size);
+      background: linear-gradient(135deg, #f87171, #ef4444);
+      border-radius: 6px; box-shadow: 0 10px 20px rgba(239,68,68,0.4);
+    }
+    .hud {
+      position: absolute; inset: 12px 12px auto 12px; display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 12px; background: rgba(27,31,59,0.6); border: 1px solid #2a305a; border-radius: 10px;
+      backdrop-filter: blur(4px);
+    }
+    .hud .tag { font-weight: 700; letter-spacing: 0.3px; }
+    .hud .value { color: var(--accent); font-weight: 700; }
+
+    .panel {
+      width: 240px; background: #0c1024; border: 1px solid #22264a; border-radius: 14px; padding: 14px;
+      box-shadow: 0 18px 40px rgba(0,0,0,0.4);
+    }
+    .panel h2 { margin: 0 0 10px; font-size: 18px; color: #b9c3ff; }
+    .panel .row { display: flex; justify-content: space-between; margin: 6px 0; }
+    .panel button {
+      width: 100%; margin-top: 10px; padding: 10px 14px; border: 0; border-radius: 10px;
+      background: #22c55e; color: #041022; font-weight: 700; cursor: pointer;
+      box-shadow: 0 10px 20px rgba(34,197,94,0.3);
+    }
+    .panel button:active { transform: translateY(1px); }
+
+    .center-msg {
+      position: absolute; inset: 0; display: grid; place-items: center; text-align: center;
+      pointer-events: none;
+    }
+    .badge {
+      display: inline-block; padding: 6px 10px; background: #11163a; border: 1px solid #2b3170;
+      border-radius: 999px; margin-bottom: 8px; font-size: 12px; color: #9db1ff;
+    }
+    .title { font-size: 24px; font-weight: 800; margin: 4px 0 10px; }
+    .cta { font-size: 14px; color: #c7d2fe; }
+    .hidden { display: none; }
+
+    /* Pause flash */
+    .paused-flash {
+      position: absolute; inset: 0; background: rgba(255,255,255,0.04);
+      animation: pulse 1s infinite; pointer-events: none;
+    }
+    @keyframes pulse { 0% {opacity: 0.04} 50% {opacity: 0.12} 100% {opacity: 0.04} }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div id="game" aria-label="Dodger Game">
+      <div class="hud">
+        <div><span class="tag">Score:</span> <span id="score" class="value">0</span></div>
+        <div><span class="tag">Speed:</span> <span id="speed" class="value">1.0x</span></div>
+        <div><span class="tag">Best:</span> <span id="best" class="value">0</span></div>
+      </div>
+
+      <div id="stars"></div>
+      <div id="player" class="player" role="img" aria-label="Player"></div>
+
+      <div id="startMsg" class="center-msg">
+        <div>
+          <div class="badge">Arrow keys / A D to move • Space to pause</div>
+          <div class="title">DODGER</div>
+          <div class="cta">Press Enter to start</div>
+        </div>
+      </div>
+
+      <div id="gameOverMsg" class="center-msg hidden">
+        <div>
+          <div class="badge">You collided!</div>
+          <div class="title">Game Over</div>
+          <div class="cta">Press Enter to restart</div>
+        </div>
+      </div>
+
+      <div id="paused" class="paused-flash hidden"></div>
+    </div>
+
+    <aside class="panel">
+      <h2>Controls</h2>
+      <div class="row"><span>Move left/right</span><span>← / → or A / D</span></div>
+      <div class="row"><span>Pause</span><span>Space</span></div>
+      <div class="row"><span>Start/Restart</span><span>Enter</span></div>
+      <button id="btnStart">Start game</button>
+      <button id="btnPause" style="background:#fb7185; margin-top:6px;">Pause / Resume</button>
+      <button id="btnBoost" style="background:#60a5fa; margin-top:6px;">Speed boost</button>
+    </aside>
+  </div>
+
+  <script>
+    const game = document.getElementById('game');
+    const player = document.getElementById('player');
+    const scoreEl = document.getElementById('score');
+    const speedEl = document.getElementById('speed');
+    const bestEl = document.getElementById('best');
+    const startMsg = document.getElementById('startMsg');
+    const gameOverMsg = document.getElementById('gameOverMsg');
+    const pausedFlash = document.getElementById('paused');
+    const btnStart = document.getElementById('btnStart');
+    const btnPause = document.getElementById('btnPause');
+    const btnBoost = document.getElementById('btnBoost');
+    const stars = document.getElementById('stars');
+
+    const G_W = game.clientWidth;
+    const G_H = game.clientHeight;
+    const state = {
+      running: false,
+      paused: false,
+      speed: 1,
+      score: 0,
+      best: Number(localStorage.getItem('dodger_best') || 0),
+      playerX: G_W/2 - player.clientWidth/2,
+      enemies: [],
+      lastSpawn: 0,
+    };
+    bestEl.textContent = state.best;
+
+    // Starfield
+    for (let i = 0; i < 120; i++) {
+      const s = document.createElement('div');
+      s.className = 'star';
+      s.style.left = Math.random() * G_W + 'px';
+      s.style.top = Math.random() * G_H + 'px';
+      s.style.animationDelay = (Math.random()*3).toFixed(2) + 's';
+      stars.appendChild(s);
+    }
+
+    // Input
+    const keys = new Set();
+    window.addEventListener('keydown', (e) => {
+      if (['ArrowLeft','ArrowRight','KeyA','KeyD','Space','Enter'].includes(e.code)) e.preventDefault();
+      keys.add(e.code);
+      if (e.code === 'Enter') startGame();
+      if (e.code === 'Space') togglePause();
+    });
+    window.addEventListener('keyup', (e) => keys.delete(e.code));
+
+    btnStart.onclick = () => startGame();
+    btnPause.onclick = () => togglePause();
+    btnBoost.onclick = () => { state.speed = Math.min(2.4, state.speed + 0.2); speedEl.textContent = state.speed.toFixed(1) + 'x'; };
+
+    function startGame() {
+      state.running = true;
+      state.paused = false;
+      state.speed = 1;
+      state.score = 0;
+      state.enemies = [];
+      startMsg.classList.add('hidden');
+      gameOverMsg.classList.add('hidden');
+      pausedFlash.classList.add('hidden');
+      speedEl.textContent = '1.0x';
+      scoreEl.textContent = '0';
+      state.playerX = G_W/2 - player.clientWidth/2;
+      player.style.left = state.playerX + 'px';
+      state.lastSpawn = performance.now();
+      lastTime = performance.now();
+      requestAnimationFrame(loop);
+    }
+
+    function togglePause() {
+      if (!state.running) return;
+      state.paused = !state.paused;
+      pausedFlash.classList.toggle('hidden', !state.paused);
+    }
+
+    // Spawn enemies
+    function spawnEnemy() {
+      const e = document.createElement('div');
+      e.className = 'enemy';
+      e.style.left = Math.max(4, Math.random() * (G_W - 40)) + 'px';
+      e.dataset.y = '-40';
+      e.dataset.vy = (120 + Math.random()*160).toString(); // px/s
+      game.appendChild(e);
+      state.enemies.push(e);
+    }
+
+    // Collision check (AABB)
+    function collide(a, b) {
+      const ar = a.getBoundingClientRect();
+      const br = b.getBoundingClientRect();
+      return !(ar.right < br.left || ar.left > br.right || ar.bottom < br.top || ar.top > br.bottom);
+    }
+
+    let lastTime = 0;
+    function loop(ts) {
+      if (!state.running) return;
+      const dt = Math.min(0.032, (ts - lastTime) / 1000) * (state.paused ? 0 : state.speed);
+      lastTime = ts;
+
+      // Player movement
+      const speedX = 240;
+      if (keys.has('ArrowLeft') || keys.has('KeyA')) state.playerX -= speedX * dt;
+      if (keys.has('ArrowRight') || keys.has('KeyD')) state.playerX += speedX * dt;
+      state.playerX = Math.max(4, Math.min(G_W - player.clientWidth - 4, state.playerX));
+      player.style.left = state.playerX + 'px';
+
+      // Enemy spawn cadence
+      if (ts - state.lastSpawn > 500 / state.speed) {
+        spawnEnemy();
+        state.lastSpawn = ts;
+      }
+
+      // Update enemies
+      for (let i = state.enemies.length - 1; i >= 0; i--) {
+        const e = state.enemies[i];
+        const y = parseFloat(e.dataset.y) + parseFloat(e.dataset.vy) * dt;
+        e.dataset.y = y.toString();
+        e.style.top = y + 'px';
+
+        // Remove off-screen
+        if (y > G_H + 60) {
+          e.remove();
+          state.enemies.splice(i, 1);
+          continue;
+        }
+
+        // Collision
+        if (collide(player, e)) {
+          endGame();
+          return;
+        }
+      }
+
+      // Score
+      state.score += dt * 100;
+      scoreEl.textContent = Math.floor(state.score).toString();
+
+      requestAnimationFrame(loop);
+    }
+
+    function endGame() {
+      state.running = false;
+      gameOverMsg.classList.remove('hidden');
+      state.best = Math.max(state.best, Math.floor(state.score));
+      localStorage.setItem('dodger_best', state.best.toString());
+      bestEl.textContent = state.best;
+      // Clean enemies
+      state.enemies.forEach(e => e.remove());
+      state.enemies = [];
+    }
+  </script>
+</body>
+</html>
